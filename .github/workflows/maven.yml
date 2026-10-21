@@ -1,0 +1,40 @@
+# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: CI pipeline
+
+# Situações em que o workflow deve ser executado
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    # Define configurações para a run como distro, tempo máximo executando e permissões
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4 # faz o checkout do código para a máquina virtual
+    - name: Set up JDK 25 # configura o JDK na máquina virtual
+      uses: actions/setup-java@v4
+      with:
+        java-version: '25'
+        distribution: 'temurin'
+        cache: maven
+    - name: Build with Maven # roda o build e os testes usando o Maven Wrapper (garantindo a versão correta)
+      run: ./mvnw -B verify --file pom.xml
+
+    # Lista as dependências do projeto para o GitHub analisar e mostrar no Security tab do repositório
+    - name: Update dependency graph
+      uses: advanced-security/maven-dependency-submission-action@b275d12641ac2d2108b2cbb7598b154ad2f2cee8 # v5.0.0
