@@ -1,0 +1,15 @@
+meta {
+  name: Aguardar Resposta do Cliente
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/orcamentos/:id/aguardar
+  body: none
+  auth: none
+}
+
+params:path {
+  id: {{orcamentoId}}
+}

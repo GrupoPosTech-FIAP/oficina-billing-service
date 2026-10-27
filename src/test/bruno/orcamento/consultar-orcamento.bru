@@ -1,0 +1,15 @@
+meta {
+  name: Consultar Orcamento por ID
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/orcamentos/:id
+  body: none
+  auth: none
+}
+
+params:path {
+  id: {{orcamentoId}}
+}

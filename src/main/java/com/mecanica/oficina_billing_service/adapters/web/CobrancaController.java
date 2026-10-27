@@ -20,9 +20,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Controller REST para gestão de cobranças e integração com Checkout Pro do Mercado Pago.
+ */
 @RestController
 @RequestMapping("/cobrancas")
-@Tag(name = "Cobranças", description = "Gerenciamento de cobranças e integração com pagamentos do Mercado Pago")
+@Tag(name = "Cobranças", description = "Gerenciamento de cobranças e geração de URL de pagamento para Checkout Pro do Mercado Pago")
 public class CobrancaController {
 
     private final CriarCobrancaUseCase criarCobrancaUseCase;
@@ -35,15 +38,25 @@ public class CobrancaController {
     }
 
     @PostMapping
-    @Operation(summary = "Criar cobrança no Mercado Pago", description = "Cria uma preferência de pagamento no Mercado Pago e registra a cobrança")
+    @Operation(summary = "Criar cobrança no Mercado Pago", description = "Gera uma preferência de pagamento no Checkout Pro e retorna a URL direta de pagamento (linkPagamento)")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Cobrança criada com link de checkout"),
-            @ApiResponse(responseCode = "400", description = "Dados da cobrança inválidos")
+            @ApiResponse(responseCode = "201", description = "Cobrança criada com link direto para o Checkout Pro"),
+            @ApiResponse(responseCode = "400", description = "Dados da cobrança inválidos"),
+            @ApiResponse(responseCode = "500", description = "Erro na integração com Mercado Pago")
     })
     public ResponseEntity<CriarCobrancaResponse> criar(@Valid @RequestBody CriarCobrancaRequest req) {
-        var input = new CriarCobrancaInput(req.getPedidoId(), req.getDescricao(), req.getValor());
+        var input = new CriarCobrancaInput(
+                req.getPedidoId(),
+                req.getDescricao(),
+                req.getValor(),
+                req.getPayerEmail(),
+                req.getPayerName(),
+                req.getPayerCpf(),
+                req.getReturnUrl()
+        );
         CobrancaOutput output = criarCobrancaUseCase.executar(input);
-        return ResponseEntity.status(HttpStatus.CREATED).body(CriarCobrancaResponse.fromOutput(output));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(CriarCobrancaResponse.fromOutput(output));
     }
 
     @GetMapping("/{id}")

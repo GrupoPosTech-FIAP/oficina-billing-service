@@ -15,7 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.util.Optional;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +53,25 @@ class ProcessarWebhookMercadoPagoUseCaseTest {
     }
 
     @Test
+    @DisplayName("Deve ser idempotente e não atualizar novamente se a cobrança já estiver com status PAGO")
+    void deveSerIdempotenteQuandoJaPago() {
+        var input = new ProcessarWebhookInput("payment.updated", "payment", "987654321");
+        String referencia = "oficina-billing:dev:os-999";
+
+        var cobranca = Cobranca.criar("os-999", new BigDecimal("150.00"), "Troca Pastilhas", referencia, "pref-99", "http://init")
+                .marcarComoPago();
+
+        when(mercadoPagoGateway.consultarPagamento(987654321L))
+                .thenReturn(Optional.of(new MercadoPagoGateway.DetalhePagamento(987654321L, "approved", "accredited", referencia)));
+
+        when(cobrancaGateway.buscarPorReferencia(referencia)).thenReturn(Optional.of(cobranca));
+
+        useCase.executar(input);
+
+        verify(cobrancaGateway, never()).atualizar(any());
+    }
+
+    @Test
     @DisplayName("Deve atualizar cobrança para RECUSADO quando status do pagamento for rejected")
     void deveAtualizarCobrancaParaRecusado() {
         var input = new ProcessarWebhookInput("payment.updated", "payment", "987654321");
@@ -68,5 +87,24 @@ class ProcessarWebhookMercadoPagoUseCaseTest {
         useCase.executar(input);
 
         verify(cobrancaGateway).atualizar(argThat(c -> c.getStatus() == CobrancaStatus.RECUSADO));
+    }
+
+    @Test
+    @DisplayName("Deve atualizar cobrança para ESTORNADO quando status do pagamento for refunded")
+    void deveAtualizarCobrancaParaEstornado() {
+        var input = new ProcessarWebhookInput("payment.updated", "payment", "987654321");
+        String referencia = "oficina-billing:dev:os-999";
+
+        var cobranca = Cobranca.criar("os-999", new BigDecimal("150.00"), "Troca Pastilhas", referencia, "pref-99", "http://init")
+                .marcarComoPago();
+
+        when(mercadoPagoGateway.consultarPagamento(987654321L))
+                .thenReturn(Optional.of(new MercadoPagoGateway.DetalhePagamento(987654321L, "refunded", "refunded", referencia)));
+
+        when(cobrancaGateway.buscarPorReferencia(referencia)).thenReturn(Optional.of(cobranca));
+
+        useCase.executar(input);
+
+        verify(cobrancaGateway).atualizar(argThat(c -> c.getStatus() == CobrancaStatus.ESTORNADO));
     }
 }

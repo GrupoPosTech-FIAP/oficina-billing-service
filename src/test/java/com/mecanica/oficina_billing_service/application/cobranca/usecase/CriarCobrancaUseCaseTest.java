@@ -38,11 +38,24 @@ class CriarCobrancaUseCaseTest {
     @Test
     @DisplayName("Deve criar cobrança chamando gateway do Mercado Pago e persistindo dados")
     void deveCriarCobrancaComSucesso() {
-        var input = new CriarCobrancaInput("os-456", "Revisão geral", new BigDecimal("300.00"));
+        var input = new CriarCobrancaInput("os-456", "Revisão geral", new BigDecimal("300.00"),
+                "cliente@email.com", "Carlos Silva", "12345678900");
         String referenciaEsperada = "oficina-billing:dev:os-456";
 
-        when(mercadoPagoGateway.criarPreferencia(eq(referenciaEsperada), eq("Revisão geral"), eq(new BigDecimal("300.00"))))
-                .thenReturn(new MercadoPagoGateway.PreferenciaPagamento("pref-123", "https://mp.com/checkout/123"));
+        when(mercadoPagoGateway.isSandboxMode()).thenReturn(true);
+        when(mercadoPagoGateway.criarPreferencia(
+                eq(referenciaEsperada),
+                eq("Revisão geral"),
+                eq(new BigDecimal("300.00")),
+                eq("cliente@email.com"),
+                eq("Carlos Silva"),
+                eq("12345678900"),
+                isNull()
+        )).thenReturn(new MercadoPagoGateway.PreferenciaPagamento(
+                "pref-123",
+                "https://mp.com/checkout/123",
+                "https://sandbox.mp.com/checkout/123"
+        ));
 
         when(cobrancaGateway.salvar(any(Cobranca.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -54,7 +67,8 @@ class CriarCobrancaUseCaseTest {
         assertEquals(new BigDecimal("300.00"), output.valor());
         assertEquals(referenciaEsperada, output.referencia());
         assertEquals("pref-123", output.preferenceId());
-        assertEquals("https://mp.com/checkout/123", output.initPoint());
+        // Em modo sandbox, link de pagamento deve ser sandboxInitPoint
+        assertEquals("https://sandbox.mp.com/checkout/123", output.initPoint());
         assertEquals(CobrancaStatus.PENDENTE, output.status());
 
         verify(cobrancaGateway).salvar(any(Cobranca.class));

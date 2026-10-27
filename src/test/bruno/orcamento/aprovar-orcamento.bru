@@ -1,0 +1,15 @@
+meta {
+  name: Aprovar Orcamento
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{baseUrl}}/orcamentos/:id/aprovar
+  body: none
+  auth: none
+}
+
+params:path {
+  id: {{orcamentoId}}
+}

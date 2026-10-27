@@ -1,0 +1,37 @@
+meta {
+  name: Atualizar Orcamento
+  type: http
+  seq: 8
+}
+
+put {
+  url: {{baseUrl}}/orcamentos/:id
+  body: json
+  auth: none
+}
+
+params:path {
+  id: {{orcamentoId}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "observacoes": "Itens renegociados com o cliente",
+    "itens": [
+      {
+        "descricao": "Óleo 5W30 Sintético",
+        "quantidade": 4,
+        "precoUnitario": 40.00
+      },
+      {
+        "descricao": "Filtro de Óleo",
+        "quantidade": 1,
+        "precoUnitario": 30.00
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Enviar Orcamento ao Cliente
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/orcamentos/:id/enviar
+  body: none
+  auth: none
+}
+
+params:path {
+  id: {{orcamentoId}}
+}

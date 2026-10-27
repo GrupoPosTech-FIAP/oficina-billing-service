@@ -6,6 +6,9 @@ import com.mecanica.oficina_billing_service.application.cobranca.input.CriarCobr
 import com.mecanica.oficina_billing_service.application.cobranca.output.CobrancaOutput;
 import com.mecanica.oficina_billing_service.domain.cobranca.Cobranca;
 
+/**
+ * Caso de uso para criação de cobrança com preferência no Checkout Pro do Mercado Pago.
+ */
 public class CriarCobrancaUseCase {
 
     private final CobrancaGateway cobrancaGateway;
@@ -19,7 +22,20 @@ public class CriarCobrancaUseCase {
     public CobrancaOutput executar(CriarCobrancaInput input) {
         String referencia = "oficina-billing:dev:" + input.pedidoId();
 
-        var pref = mercadoPagoGateway.criarPreferencia(referencia, input.descricao(), input.valor());
+        var pref = mercadoPagoGateway.criarPreferencia(
+                referencia,
+                input.descricao(),
+                input.valor(),
+                input.payerEmail(),
+                input.payerName(),
+                input.payerCpf(),
+                input.returnUrl()
+        );
+
+        // Prioriza sandboxInitPoint quando em modo sandbox para testes confiáveis
+        String linkPagamento = (mercadoPagoGateway.isSandboxMode() && pref.sandboxInitPoint() != null && !pref.sandboxInitPoint().isBlank())
+                ? pref.sandboxInitPoint()
+                : pref.initPoint();
 
         Cobranca cobranca = Cobranca.criar(
                 input.pedidoId(),
@@ -27,7 +43,7 @@ public class CriarCobrancaUseCase {
                 input.descricao(),
                 referencia,
                 pref.preferenceId(),
-                pref.initPoint()
+                linkPagamento
         );
 
         Cobranca salva = cobrancaGateway.salvar(cobranca);

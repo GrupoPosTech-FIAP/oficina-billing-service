@@ -1,0 +1,25 @@
+meta {
+  name: 09 - Simular Webhook Mercado Pago
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/webhooks/mercadopago
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "action": "payment.updated",
+    "type": "payment",
+    "data": {
+      "id": "123456789"
+    }
+  }
+}

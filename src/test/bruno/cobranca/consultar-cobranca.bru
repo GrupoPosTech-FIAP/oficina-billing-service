@@ -1,0 +1,15 @@
+meta {
+  name: Consultar Cobranca por ID
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/cobrancas/:id
+  body: none
+  auth: none
+}
+
+params:path {
+  id: {{cobrancaId}}
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Negar Orcamento
+  type: http
+  seq: 7
+}
+
+patch {
+  url: {{baseUrl}}/orcamentos/:id/negar
+  body: none
+  auth: none
+}
+
+params:path {
+  id: {{orcamentoId}}
+}

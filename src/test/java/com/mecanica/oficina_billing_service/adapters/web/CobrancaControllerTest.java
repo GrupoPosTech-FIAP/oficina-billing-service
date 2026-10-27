@@ -3,6 +3,7 @@ package com.mecanica.oficina_billing_service.adapters.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.mecanica.oficina_billing_service.adapters.web.dto.request.CriarCobrancaRequest;
+import com.mecanica.oficina_billing_service.application.cobranca.gateway.MercadoPagoGateway;
 import com.mecanica.oficina_billing_service.application.cobranca.input.CriarCobrancaInput;
 import com.mecanica.oficina_billing_service.application.cobranca.output.CobrancaOutput;
 import com.mecanica.oficina_billing_service.application.cobranca.usecase.ConsultarCobrancaUseCase;
@@ -47,13 +48,23 @@ class CobrancaControllerTest {
         objectMapper.registerModule(new JavaTimeModule());
 
         CobrancaController controller = new CobrancaController(criarCobrancaUseCase, consultarCobrancaUseCase);
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
     }
 
     @Test
-    @DisplayName("POST /cobrancas deve retornar 201 com link de pagamento e referência")
+    @DisplayName("POST /cobrancas deve retornar 201 com link de pagamento direto para Checkout Pro")
     void deveCriarCobrancaERetornar201() throws Exception {
-        var request = new CriarCobrancaRequest("os-123", "Troca Pastilhas", new BigDecimal("120.00"));
+        var request = new CriarCobrancaRequest(
+                "os-123",
+                "Troca Pastilhas",
+                new BigDecimal("120.00"),
+                "cliente@email.com",
+                "Carlos",
+                "12345678900",
+                "https://oficina.com.br/retorno"
+        );
         UUID id = UUID.randomUUID();
 
         var output = new CobrancaOutput(
@@ -76,8 +87,24 @@ class CobrancaControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.cobrancaId").value(id.toString()))
+                .andExpect(jsonPath("$.pedidoId").value("os-123"))
+                .andExpect(jsonPath("$.valor").value(120.00))
                 .andExpect(jsonPath("$.linkPagamento").value("https://mp.com/init"))
-                .andExpect(jsonPath("$.referencia").value("oficina-billing:dev:os-123"));
+                .andExpect(jsonPath("$.referencia").value("oficina-billing:dev:os-123"))
+                .andExpect(jsonPath("$.status").value("PENDENTE"));
+    }
+
+    @Test
+    @DisplayName("POST /cobrancas com valor negativo deve retornar 400 Bad Request")
+    void deveRetornar400QuandoValorInvalido() throws Exception {
+        var request = new CriarCobrancaRequest("os-123", "Troca Pastilhas", new BigDecimal("-10.00"));
+
+        mockMvc.perform(post("/cobrancas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Dados de entrada inválidos"));
     }
 
     @Test

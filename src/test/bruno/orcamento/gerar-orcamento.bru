@@ -1,0 +1,48 @@
+meta {
+  name: Gerar Orcamento
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/orcamentos
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "ordemServicoId": "{{ordemServicoId}}",
+    "clienteId": "{{clienteId}}",
+    "observacoes": "Revisão geral de freios e suspensão",
+    "itens": [
+      {
+        "descricao": "Óleo 5W30 Sintético",
+        "quantidade": 4,
+        "precoUnitario": 45.00
+      },
+      {
+        "descricao": "Filtro de Óleo",
+        "quantidade": 1,
+        "precoUnitario": 35.00
+      },
+      {
+        "descricao": "Serviço de Mão de Obra",
+        "quantidade": 1,
+        "precoUnitario": 120.00
+      }
+    ]
+  }
+}
+
+script:post-response {
+  const resBody = res.getBody();
+  if (resBody && resBody.id) {
+    bru.setEnvVar("orcamentoId", String(resBody.id));
+    bru.setEnvVar("valorTotal", String(resBody.valorTotal));
+  }
+}
