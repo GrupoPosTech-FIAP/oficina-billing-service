@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - secret.yaml
+
+images:
+  - name: oficina-billing-image
+    newName: 322517093426.dkr.ecr.us-east-1.amazonaws.com/oficina-billing-service
+    newTag: "latest"
+
+patches:
+  - path: service-loadbalancer.yaml
+  - path: configmap-rds.yaml

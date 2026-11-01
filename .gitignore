@@ -37,3 +37,6 @@ build/
 .env.*
 !.env.example
 .secrets
+
+### Kubernetes Secrets ###
+k8s/overlays/*/secret.yaml

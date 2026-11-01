@@ -18,9 +18,13 @@ Desenvolvido como parte do ecossistema de microsserviços da pós-graduação **
 | **SDK de Pagamentos** | Mercado Pago Java SDK | 2.1.21 (`com.mercadopago:sdk-java`) |
 | **Automação de Build** | GNU Make | `Makefile` cross-platform (Windows / Linux / macOS) |
 | **Conteinerização** | Docker & Docker Compose | Multi-stage build com `eclipse-temurin:25` |
+| **Orquestração de Contêineres** | Kubernetes & Kustomize | `k8s/base` + `k8s/overlays/aws` (HPA, Deployment, Service) |
+| **Registry de Imagens** | Amazon ECR | Repositório `oficina-billing-service` (tags imutáveis) |
+| **Deploy & CI/CD** | GitHub Actions | Pipelines independentes de CI (`maven.yml`) e CD (`deploy.yml`) |
+| **Monitoramento & Saúde** | Spring Boot Actuator | `/actuator/health` (liveness, readiness e startup probes) |
 | **Documentação da API** | SpringDoc OpenAPI | 3.1.0 (Swagger UI v3) |
 | **Produtividade** | Lombok | 1.18.x |
-| **Testes Unitários / Mock** | JUnit 5 & Mockito | 40 testes automatizados via Maven Surefire |
+| **Testes Unitários / Mock** | JUnit 5 & Mockito | 41 testes automatizados via Maven Surefire |
 | **Testes E2E / API Client** | Bruno | Coleção completa de requisições em `src/test/bruno/` |
 
 ---
@@ -40,6 +44,57 @@ O microsserviço segue os princípios da **Clean Architecture (Arquitetura Limpa
   * `persistence/`: Repositórios Spring Data JPA e gateways de persistência.
   * `mercadopago/`: Integração oficial com a API do Mercado Pago via SDK e validador de assinatura criptográfica HMAC-SHA256 ([MercadoPagoWebhookValidator](src/main/java/com/mecanica/oficina_billing_service/adapters/mercadopago/MercadoPagoWebhookValidator.java)).
   * `config/`: Propriedades tipadas e configurações de ambiente.
+
+### 🌐 Integração no Ecossistema de Microsserviços e AWS
+
+O microsserviço de faturamento opera como um serviço autônomo dentro do ecossistema distribuído da oficina na AWS:
+
+```mermaid
+graph TD
+    Client["📱 Cliente / Frontend"] --> AGW["🚪 AWS API Gateway (oficina-auth-gateway)\n- POST /auth (autenticação JWT)\n- ANY /billing/* (JWT Authorizer)\n- POST /webhooks/mercadopago (Público HMAC)"]
+    
+    subgraph EKS["🖥️ Cluster EKS (eks-oficina-terraform)"]
+        SVC["🌐 Service: oficina-billing\n(Type: LoadBalancer / Porta 8082)"]
+        HPA["📈 HPA\n(1-5 réplicas | 70% CPU / 80% RAM)"]
+        POD["📦 Pods: oficina-billing-service\n- Java 25 / Spring Boot 4.1.1\n- Probes: /actuator/health"]
+        SVC --> POD
+        HPA -.->|Controla| POD
+    end
+
+    subgraph Dados["🗄️ Camada de Dados (oficina-infra-database)"]
+        RDS[("🐘 AWS RDS PostgreSQL\nDatabase: billing_db")]
+    end
+
+    subgraph Provedor Pagamento["💳 Mercado Pago"]
+        MP_API["API Checkout Pro (Headless)"]
+        MP_WH["Notificações Webhook (HMAC-SHA256)"]
+    end
+
+    AGW -->|HTTP Proxy| SVC
+    POD -->|JDBC Connection| RDS
+    POD -->|Cria Preferência| MP_API
+    MP_WH -->|Callback de Pagamento| AGW
+
+    style POD fill:#22c55e,color:#fff
+    style AGW fill:#3b82f6,color:#fff
+    style RDS fill:#6366f1,color:#fff
+    style MP_API fill:#06b6d4,color:#fff
+    style MP_WH fill:#06b6d4,color:#fff
+```
+
+#### Papel dos Repositórios Integrados:
+* **[`oficina-infra-cluster`](../oficina-infra-cluster)**: Provisiona a VPC, Subnets, o cluster EKS (`eks-oficina-terraform`) e o repositório ECR (`oficina-billing-service`).
+* **[`oficina-infra-database`](../oficina-infra-database)**: Provisiona a instância PostgreSQL compartilhada no RDS; as tabelas do billing ficam isoladas na base `billing_db`.
+* **[`oficina-auth-gateway`](../oficina-auth-gateway)**: Ponto único de entrada com rate limiting por IP, autenticação JWT para endpoints de negócios (`/billing/*`) e encaminhamento do webhook público do Mercado Pago (`/webhooks/mercadopago`).
+* **[`oficina-billing-service`](.)**: Repositório do microsserviço com pipeline de CD independente, aplicando manifestos Kustomize diretamente no cluster EKS.
+
+---
+
+## 📚 Documentação Adicional
+
+Para instruções operacionais e detalhes do ciclo de vida na nuvem, consulte a pasta [`docs/`](docs/):
+
+* 🚀 **[Guia de Deploy e Destruição na AWS (EKS + RDS + CD)](docs/deploy-aws.md):** Manual completo com o passo a passo de subida das esteiras de CI/CD, configuração de credenciais no Learner Lab, testes de ponta a ponta na nuvem e o **roteiro obrigatório de destruição da infraestrutura** para evitar consumo indevido de créditos.
 
 ---
 
@@ -180,6 +235,8 @@ docker compose up -d billing-db
   * *JDBC URL:* `jdbc:h2:mem:billing_db`
   * *User Name:* `sa`
   * *Password:* *(deixar em branco)*
+* **Spring Boot Actuator Health:** [http://localhost:8082/actuator/health](http://localhost:8082/actuator/health)
+* **Spring Boot Actuator Info:** [http://localhost:8082/actuator/info](http://localhost:8082/actuator/info)
 
 ---
 
@@ -202,13 +259,98 @@ docker compose up -d billing-db
 
 ---
 
+## ☁️ Deploy e Infraestrutura Kubernetes (K8s & CI/CD Independente)
+
+O `oficina-billing-service` possui ciclo de vida e **Continuous Deployment (CD) 100% desacoplado**, utilizando Kustomize para gerenciar os manifestos declarativos do Kubernetes e GitHub Actions para a automação.
+
+> 📖 **Guia Operacional Completo:** Para o passo a passo detalhado de implantação na AWS, execução de testes remotos e o procedimento obrigatório de destruição para economia de créditos no Learner Lab, consulte [`docs/deploy-aws.md`](docs/deploy-aws.md).
+
+### 📁 Estrutura de Manifestos Kustomize (`k8s/`)
+
+```
+k8s/
+├── base/
+│   ├── kustomization.yaml           # Orquestrador base de recursos
+│   ├── app-deployment.yaml          # Pods, portas, recursos e probes
+│   ├── app-service.yaml             # Service ClusterIP (porta 8082)
+│   ├── app-hpa.yaml                 # Autoscaler horizontal (1-5 réplicas)
+│   └── configmap.yaml               # Variáveis de ambiente não sensíveis
+└── overlays/
+    └── aws/
+        ├── kustomization.yaml       # Aplica patches e substitui imagem do ECR
+        ├── service-loadbalancer.yaml# Promove o Service a LoadBalancer na AWS
+        ├── configmap-rds.yaml       # Injeta dinamicamente o endpoint do RDS
+        ├── secret.example.yaml      # Modelo documental de secrets
+        └── secret.yaml              # Gerado efemeramente na pipeline (no .gitignore)
+```
+
+### ⚙️ Recursos Kubernetes Gerenciados:
+1. **Deployment (`app-deployment.yaml`)**:
+   * Executa a imagem imutável publicada no Amazon ECR (`oficina-billing-service`).
+   * Configura limites e reservas de recursos: `requests: { cpu: 250m, memory: 512Mi }` e `limits: { cpu: 500m, memory: 768Mi }`.
+   * **Probes de Saúde (Actuator)**:
+     * `startupProbe`: aguarda a inicialização do Spring Boot (até 150s) sem matar o pod antecipadamente.
+     * `readinessProbe`: verifica `/actuator/health` antes de enviar tráfego do Service.
+     * `livenessProbe`: verifica a estabilidade contínua da aplicação.
+2. **Service (`app-service.yaml` + overlay `service-loadbalancer.yaml`)**:
+   * Expõe a porta `8082` da aplicação.
+   * Na AWS, o patch Kustomize converte o tipo para `LoadBalancer`, disponibilizando um endereço ELB para integração direta e consumo pelo API Gateway.
+3. **Horizontal Pod Autoscaler (`app-hpa.yaml`)**:
+   * Escala automaticamente a quantidade de pods entre **1 (mínimo)** e **5 (máximo)** baseado na utilização média de 70% de CPU ou 80% de memória.
+4. **ConfigMap & Secret (`configmap.yaml`, `secret.yaml`)**:
+   * Separação estrita de configuração (`billing-config`) e segredos (`billing-secret`).
+   * O arquivo `secret.yaml` é gerado efemeramente durante a execução da esteira de CD e é estritamente ignorado no Git via [`.gitignore`](.gitignore).
+
+---
+
+### 🔁 Pipeline de CD via GitHub Actions ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml))
+
+A publicação no cluster EKS da AWS é automatizada e independente dos demais microsserviços:
+
+* **Gatilhos de Execução:**
+  * **Manual (`workflow_dispatch`)**: Requer o input `rds_endpoint` (obtido com `terraform output -raw DB_Endpoint` no repositório `oficina-infra-database`). Essencial para suportar a rotação de instâncias e credenciais temporárias do AWS Learner Lab (~4h).
+  * **Automático**: Ao publicar uma tag Git versionada (ex: `v1.0.0`).
+
+* **Etapas da Pipeline de CD:**
+  1. **Checkout & Versionamento**: Determina a tag da imagem (tag Git ou `GITHUB_SHA` curto).
+  2. **Autenticação AWS & Login ECR**: Conecta-se à AWS e realiza login no registro de contêineres.
+  3. **Build & Push Docker**: Constrói a imagem baseada em Java 25 e faz push para o ECR `oficina-billing-service`.
+  4. **Kubeconfig EKS**: Configura as credenciais de acesso ao cluster `eks-oficina-terraform`.
+  5. **Injeção de Secrets e Configuração**:
+     * Gera o `k8s/overlays/aws/secret.yaml` em Base64 com os secrets do GitHub (`RDS_PASSWORD`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `MP_PUBLIC_KEY`).
+     * Atualiza dinamicamente o `kustomization.yaml` com o registry e tag da imagem recém-construída.
+     * Injeta o `rds_endpoint` informado no `configmap-rds.yaml`.
+  6. **Deploy & Rollout**: Executa `kubectl apply -k k8s/overlays/aws` e valida a estabilização com `kubectl rollout status deploy/oficina-billing`.
+
+#### 🔐 Secrets Necessários no Repositório GitHub
+
+Para o funcionamento do CD, cadastre em **Settings > Secrets and variables > Actions**:
+
+| Secret | Descrição | Origem |
+| :--- | :--- | :--- |
+| `AWS_ACCESS_KEY_ID` | Chave de acesso AWS | AWS Learner Lab / IAM |
+| `AWS_SECRET_ACCESS_KEY` | Chave secreta AWS | AWS Learner Lab / IAM |
+| `AWS_SESSION_TOKEN` | Token temporário de sessão | AWS Learner Lab |
+| `RDS_PASSWORD` | Senha master do PostgreSQL | Mesma senha de `oficina-infra-database` |
+| `MP_ACCESS_TOKEN` | Token privado do Mercado Pago | Painel do Desenvolvedor Mercado Pago |
+| `MP_WEBHOOK_SECRET` | Chave HMAC de assinatura de webhook | Configuração de Webhooks Mercado Pago |
+| `MP_PUBLIC_KEY` | Chave pública do Mercado Pago | Painel do Desenvolvedor Mercado Pago |
+
+#### 🧪 Validação Local dos Manifestos (sem aplicar no cluster):
+```bash
+# Renderiza todos os objetos combinados pelo Kustomize para validação visual
+kubectl kustomize k8s/overlays/aws
+```
+
+---
+
 ## 🧪 Como Executar os Testes
 
 O projeto adota uma estratégia de testes em duas camadas: **Testes Automatizados (Unitários e de Integração)** e **Testes de Contrato E2E**.
 
 ### 1. Testes Automatizados (Maven)
 
-A suíte possui **40 testes automatizados** cobrindo entidades de domínio, orçamentos, criação de preferências no Checkout Pro com idempotência, tratamento semântico de erros HTTP e validação criptográfica HMAC-SHA256 de webhooks.
+A suíte possui **41 testes automatizados** cobrindo entidades de domínio, orçamentos, criação de preferências no Checkout Pro com idempotência, tratamento semântico de erros HTTP e validação criptográfica HMAC-SHA256 de webhooks.
 
 * **Via Make:**
   ```bash

@@ -1,0 +1,104 @@
+name: CD - Deploy na AWS (EKS)
+
+# Aciona manualmente (botão "Run workflow") ou ao publicar uma tag vX.Y.Z.
+# O CI (build + testes) continua no maven.yml, rodando em PR/push na main.
+on:
+  workflow_dispatch:
+    inputs:
+      # O endpoint do RDS muda toda vez que a instância é recriada (destroy + apply).
+      # Por isso NÃO fica hardcoded no configmap: você informa aqui, na hora de acionar o deploy,
+      # o valor atual obtido com `terraform output -raw DB_Endpoint` em oficina-infra-database.
+      rds_endpoint:
+        description: "Endpoint do RDS (rode: terraform output -raw DB_Endpoint em oficina-infra-database)"
+        required: true
+  push:
+    tags:
+      - "v*"
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: eks-oficina-terraform
+  ECR_REPOSITORY: oficina-billing-service
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      # Tag da imagem: nome da tag git (se for push de tag) ou o SHA curto.
+      # ECR é IMMUTABLE, então a tag precisa ser única a cada build.
+      - name: Definir tag da imagem
+        id: meta
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Credenciais temporárias do Learner Lab (expiram a cada sessão ~4h).
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build e push da imagem
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.meta.outputs.tag }}"
+          docker build -t "$IMAGE" .
+          # Se a imagem já existir no ECR (repo imutável), o push falha.
+          # O "|| true" permite ignorar e reutilizar a imagem existente no cluster.
+          docker push "$IMAGE" || echo "⚠️ Imagem já existe no ECR. Pulando push e prosseguindo com o deploy..."
+
+      - name: Configurar kubeconfig do EKS
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+
+      # Gera o Secret a partir dos GitHub Secrets. O secret.yaml real está no
+      # .gitignore; aqui ele é recriado efêmero, só durante o job.
+      - name: Gerar Secret a partir dos GitHub Secrets
+        run: |
+          cat > k8s/overlays/aws/secret.yaml <<EOF
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: billing-secret
+          type: Opaque
+          data:
+            SPRING_DATASOURCE_PASSWORD: $(printf '%s' "${{ secrets.RDS_PASSWORD }}" | base64 -w0)
+            MP_ACCESS_TOKEN: $(printf '%s' "${{ secrets.MP_ACCESS_TOKEN }}" | base64 -w0)
+            MP_WEBHOOK_SECRET: $(printf '%s' "${{ secrets.MP_WEBHOOK_SECRET }}" | base64 -w0)
+            MP_PUBLIC_KEY: $(printf '%s' "${{ secrets.MP_PUBLIC_KEY }}" | base64 -w0)
+          EOF
+
+      # Aponta o overlay para a imagem que acabou de subir (tag dinâmica e registry dinâmico).
+      - name: Apontar a imagem publicada no overlay
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          sed -i "s|newName:.*|newName: ${ECR_REGISTRY}/${ECR_REPOSITORY}|" k8s/overlays/aws/kustomization.yaml
+          sed -i "s|newTag:.*|newTag: \"${{ steps.meta.outputs.tag }}\"|" k8s/overlays/aws/kustomization.yaml
+
+      # Injeta o endpoint do RDS informado no dispatch dentro do SPRING_DATASOURCE_URL.
+      # Preserva o restante da URL e porta.
+      - name: Apontar o endpoint do RDS
+        if: ${{ inputs.rds_endpoint != '' }}
+        run: |
+          sed -i "s|jdbc:postgresql://[^:]*:5432|jdbc:postgresql://${{ inputs.rds_endpoint }}:5432|" \
+            k8s/overlays/aws/configmap-rds.yaml
+
+      - name: Deploy no cluster (aplica os manifestos)
+        run: kubectl apply -k k8s/overlays/aws
+
+      - name: Aguardar o rollout
+        run: kubectl rollout status deploy/oficina-billing --timeout=300s
