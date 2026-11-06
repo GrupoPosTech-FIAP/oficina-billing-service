@@ -409,8 +409,8 @@ A coleção completa de requisições está disponível em [`src/test/bruno/`](s
 # Via Make:
 make test-e2e
 
-# Ou diretamente via npx:
-npx @usebruno/cli run src/test/bruno/caminho-feliz --env local
+# Ou diretamente via npx (a partir da raiz da coleção):
+cd src/test/bruno && npx @usebruno/cli run caminho-feliz --env local
 ```
 
 ---

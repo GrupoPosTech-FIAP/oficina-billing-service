@@ -5,6 +5,7 @@ DB_PORT    = 5432
 DEBUG_PORT = 5006
 
 ifeq ($(OS),Windows_NT)
+	SHELL := cmd.exe
 	MVN := .\mvnw.cmd
 else
 	MVN := ./mvnw
@@ -81,4 +82,4 @@ test:
 	$(MVN) clean test
 
 test-e2e:
-	npx @usebruno/cli run src/test/bruno/caminho-feliz --env local
+	cd src/test/bruno && npx @usebruno/cli run caminho-feliz --env local
