@@ -1,8 +1,11 @@
 package com.mecanica.oficina_billing_service.adapters.messaging;
 
 import com.mecanica.oficina_billing_service.adapters.persistence.OutboxEventoSpringDataRepository;
+import com.mecanica.oficina_billing_service.application.cobranca.usecase.ExpirarCobrancasUseCase;
+import com.mecanica.oficina_billing_service.application.orcamento.usecase.ExpirarOrcamentosUseCase;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.transaction.support.TransactionOperations;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import tools.jackson.databind.json.JsonMapper;
@@ -16,7 +19,10 @@ class MensageriaConfigTest {
             .withUserConfiguration(MensageriaConfig.class)
             .withBean(OutboxEventoSpringDataRepository.class, () -> mock(OutboxEventoSpringDataRepository.class))
             .withBean(ProcessadorEventos.class, () -> mock(ProcessadorEventos.class))
-            .withBean(JsonMapper.class, () -> MensageriaFixture.JSON);
+            .withBean(JsonMapper.class, () -> MensageriaFixture.JSON)
+            .withBean(ExpirarOrcamentosUseCase.class, () -> mock(ExpirarOrcamentosUseCase.class))
+            .withBean(ExpirarCobrancasUseCase.class, () -> mock(ExpirarCobrancasUseCase.class))
+            .withBean(TransactionOperations.class, TransactionOperations::withoutTransaction);
 
     @Test
     void desligadaPorPadraoNaoCriaClientesNemAgendadores() {
@@ -26,6 +32,7 @@ class MensageriaConfigTest {
             assertThat(ctx).doesNotHaveBean(SqsClient.class);
             assertThat(ctx).doesNotHaveBean(OutboxRelay.class);
             assertThat(ctx).doesNotHaveBean(SqsConsumidorEventos.class);
+            assertThat(ctx).doesNotHaveBean(ExpiracaoSagaAgendador.class);
             assertThat(ctx.getBean(MensageriaProperties.class).produtor()).isEqualTo("oficina-billing-service");
         });
     }
@@ -42,6 +49,7 @@ class MensageriaConfigTest {
                     assertThat(ctx).hasSingleBean(SqsClient.class);
                     assertThat(ctx).hasSingleBean(OutboxRelay.class);
                     assertThat(ctx).hasSingleBean(SqsConsumidorEventos.class);
+                    assertThat(ctx).hasSingleBean(ExpiracaoSagaAgendador.class);
                     assertThat(ctx.getBean(MensageriaProperties.class).topicoArn()).endsWith("oficina-billing-events");
                 });
     }

@@ -52,6 +52,9 @@ public class CobrancaEntity {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "pagamento_id")
+    private Long pagamentoId;
+
     @PrePersist
     void prePersist() {
         var now = OffsetDateTime.now();

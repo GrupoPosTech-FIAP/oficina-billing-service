@@ -1,6 +1,8 @@
 package com.mecanica.oficina_billing_service.adapters.messaging;
 
 import com.mecanica.oficina_billing_service.adapters.persistence.OutboxEventoSpringDataRepository;
+import com.mecanica.oficina_billing_service.application.cobranca.usecase.ExpirarCobrancasUseCase;
+import com.mecanica.oficina_billing_service.application.orcamento.usecase.ExpirarOrcamentosUseCase;
 import java.net.URI;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -8,6 +10,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.transaction.support.TransactionOperations;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -23,7 +26,7 @@ public class MensageriaConfig {
     }
 
     /**
-     * Relay e consumidor só sobem com {@code mensageria.habilitada=true}. Credenciais vêm da
+     * Relay, consumidor e timeouts da Saga só sobem com {@code mensageria.habilitada=true}. Credenciais vêm da
      * cadeia padrão do SDK: no EKS, a role do nó (LabRole); localmente, variáveis de ambiente.
      */
     @Configuration
@@ -55,6 +58,13 @@ public class MensageriaConfig {
         SqsConsumidorEventos sqsConsumidorEventos(SqsClient sqsClient, ProcessadorEventos processador,
                                                   JsonMapper jsonMapper, MensageriaProperties properties) {
             return new SqsConsumidorEventos(sqsClient, processador, jsonMapper, properties);
+        }
+
+        @Bean
+        ExpiracaoSagaAgendador expiracaoSagaAgendador(ExpirarOrcamentosUseCase expirarOrcamentos,
+                                                      ExpirarCobrancasUseCase expirarCobrancas,
+                                                      TransactionOperations transacao) {
+            return new ExpiracaoSagaAgendador(expirarOrcamentos, expirarCobrancas, transacao);
         }
 
         private static boolean temEndpoint(MensageriaProperties properties) {

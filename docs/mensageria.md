@@ -13,11 +13,25 @@ consumir) está em
 | Publica em | `oficina-billing-events` |
 | Consome | `oficina-billing-queue` (DLQ: `oficina-billing-dlq`) |
 | Eventos que publica (ADR 005) | OrcamentoGerado, OrcamentoAprovado, OrcamentoNegado, OrcamentoExpirado, CobrancaCriada, PagamentoConfirmado, PagamentoRecusado, PagamentoExpirado, PagamentoEstornado |
-| Eventos que recebe | DiagnosticoConcluido (os), EstoqueBaixado (inventory), ExecucaoFalhou (execution) |
+| Eventos que recebe | DiagnosticoConcluido (os), EstoqueBaixado (inventory), ExecucaoFalhou (os; execution quando o serviço existir) |
 
-> Nesta etapa só a infraestrutura está pronta: nenhum caso de uso publica eventos e não há
-> `ManipuladorEvento` registrado. Eventos recebidos são marcados como processados e logados
-> com `[SAGA_EVENTO_SEM_MANIPULADOR]`.
+### Passos da Saga
+
+| Gatilho | Caso de uso | Resultado |
+|---|---|---|
+| `DiagnosticoConcluido` | `GerarOrcamentoDoDiagnosticoUseCase` | Gera e envia o orçamento → `OrcamentoGerado`. Se a OS já tem orçamento em andamento, ignora |
+| `PATCH /orcamentos/{id}/aprovar` | `AprovarOrcamentoUseCase` | `OrcamentoAprovado` com os insumos a baixar |
+| `PATCH /orcamentos/{id}/negar` | `NegarOrcamentoUseCase` | `OrcamentoNegado` (a OS é cancelada) |
+| `EstoqueBaixado` | `CobrarOrdemServicoUseCase` | Cria a preferência no Checkout Pro → `CobrancaCriada` (com `checkoutUrl`) |
+| Webhook `approved` | `ProcessarWebhookMercadoPagoUseCase` | Guarda o `paymentId` → `PagamentoConfirmado` |
+| Webhook `rejected`/`cancelled` | idem | `PagamentoRecusado` (o inventory estorna os insumos) |
+| `ExecucaoFalhou` | `EstornarPagamentoOrdemServicoUseCase` | Reembolso no Mercado Pago (`X-Idempotency-Key` fixa por pagamento) → `PagamentoEstornado` |
+| Agendador (1 min) | `ExpirarOrcamentosUseCase` | Orçamento sem resposta além de `ORCAMENTO_EXPIRACAO` → `EXPIRADO` + `OrcamentoExpirado` |
+| Agendador (1 min) | `ExpirarCobrancasUseCase` | Cobrança `PENDENTE` além de `COBRANCA_EXPIRACAO` → `CANCELADO` + `PagamentoExpirado` |
+
+A cobrança usa o id da OS como `pedidoId`, então há uma por OS. Falhas no Mercado Pago (sem
+credencial, API fora) lançam exceção: a mensagem volta para a fila e, depois de 5 tentativas,
+vai para a DLQ.
 
 ## Peças
 
@@ -28,7 +42,7 @@ consumir) está em
 | `adapters/messaging/OutboxRelay` | Publica os pendentes no SNS (atributo `eventType`) |
 | `adapters/messaging/SqsConsumidorEventos` | Recebe da fila; só apaga depois de processar |
 | `adapters/messaging/ProcessadorEventos` | Deduplica por `eventId` (`eventos_processados`) e chama o manipulador |
-| `adapters/messaging/ManipuladorEvento` | Interface dos manipuladores, um por `eventType` |
+| `adapters/messaging/ManipuladorEvento` | Interface dos manipuladores; cada um declara os `eventTypes` que trata |
 
 ## Configuração
 
@@ -39,6 +53,8 @@ consumir) está em
 | `MENSAGERIA_FILA_URL` | — | `oficina-billing-queue` |
 | `MENSAGERIA_ENDPOINT` | — | Endpoint alternativo (LocalStack) |
 | `AWS_REGION` | `us-east-1` | Região |
+| `ORCAMENTO_EXPIRACAO` | `PT72H` | Prazo para o cliente responder o orçamento (ISO-8601; use `PT2M` na demo) |
+| `COBRANCA_EXPIRACAO` | `PT24H` | Prazo para o pagamento da cobrança |
 
 ## Local e AWS
 

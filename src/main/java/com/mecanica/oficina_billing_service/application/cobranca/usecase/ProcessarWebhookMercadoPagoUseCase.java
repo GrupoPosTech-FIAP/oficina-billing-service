@@ -3,13 +3,21 @@ package com.mecanica.oficina_billing_service.application.cobranca.usecase;
 import com.mecanica.oficina_billing_service.application.cobranca.gateway.CobrancaGateway;
 import com.mecanica.oficina_billing_service.application.cobranca.gateway.MercadoPagoGateway;
 import com.mecanica.oficina_billing_service.application.cobranca.input.ProcessarWebhookInput;
+import com.mecanica.oficina_billing_service.application.evento.EventosSaga;
+import com.mecanica.oficina_billing_service.application.evento.gateway.PublicadorEventosGateway;
 import com.mecanica.oficina_billing_service.domain.cobranca.Cobranca;
 import com.mecanica.oficina_billing_service.domain.cobranca.CobrancaStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Caso de uso responsável pelo processamento assíncrono de notificações de Webhook do Mercado Pago.
+ *
+ * <p>Na Saga, a confirmação publica {@code PagamentoConfirmado} e a recusa publica
+ * {@code PagamentoRecusado} — apenas na primeira notificação que muda o status da cobrança.
  */
 public class ProcessarWebhookMercadoPagoUseCase {
 
@@ -17,10 +25,13 @@ public class ProcessarWebhookMercadoPagoUseCase {
 
     private final CobrancaGateway cobrancaGateway;
     private final MercadoPagoGateway mercadoPagoGateway;
+    private final PublicadorEventosGateway publicador;
 
-    public ProcessarWebhookMercadoPagoUseCase(CobrancaGateway cobrancaGateway, MercadoPagoGateway mercadoPagoGateway) {
+    public ProcessarWebhookMercadoPagoUseCase(CobrancaGateway cobrancaGateway, MercadoPagoGateway mercadoPagoGateway,
+                                              PublicadorEventosGateway publicador) {
         this.cobrancaGateway = cobrancaGateway;
         this.mercadoPagoGateway = mercadoPagoGateway;
+        this.publicador = publicador;
     }
 
     public void executar(ProcessarWebhookInput input) {
@@ -63,7 +74,12 @@ public class ProcessarWebhookMercadoPagoUseCase {
                         log.info("Cobrança {} já se encontra como PAGO. Ignorando evento repetido.", cobranca.getId());
                     } else {
                         log.info("Atualizando cobrança {} para PAGO.", cobranca.getId());
-                        cobrancaGateway.atualizar(cobranca.marcarComoPago());
+                        Cobranca paga = cobrancaGateway.atualizar(cobranca.marcarComoPago(paymentId));
+                        publicador.publicar(EventosSaga.PAGAMENTO_CONFIRMADO, paga.getPedidoId(), Map.of(
+                                "ordemServicoId", paga.getPedidoId(),
+                                "cobrancaId", paga.getId().toString(),
+                                "mercadoPagoPaymentId", paymentId,
+                                "valor", paga.getValor()));
                     }
                 }
                 case "rejected", "cancelled" -> {
@@ -71,7 +87,13 @@ public class ProcessarWebhookMercadoPagoUseCase {
                         log.info("Cobrança {} já se encontra como RECUSADA/CANCELADA.", cobranca.getId());
                     } else {
                         log.info("Atualizando cobrança {} para RECUSADO.", cobranca.getId());
-                        cobrancaGateway.atualizar(cobranca.marcarComoRecusado());
+                        Cobranca recusada = cobrancaGateway.atualizar(cobranca.marcarComoRecusado());
+                        Map<String, Object> payload = new HashMap<>();
+                        payload.put("ordemServicoId", recusada.getPedidoId());
+                        payload.put("cobrancaId", recusada.getId().toString());
+                        payload.put("mercadoPagoPaymentId", paymentId);
+                        payload.put("motivo", detalhe.statusDetail() != null ? detalhe.statusDetail() : status);
+                        publicador.publicar(EventosSaga.PAGAMENTO_RECUSADO, recusada.getPedidoId(), payload);
                     }
                 }
                 case "refunded", "charged_back" -> {

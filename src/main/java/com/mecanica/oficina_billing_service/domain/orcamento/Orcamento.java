@@ -76,6 +76,18 @@ public class Orcamento {
         return new Orcamento(id, ordemServicoId, clienteId, itens, OrcamentoStatus.NEGADO, observacoes, criadoEm, LocalDateTime.now());
     }
 
+    /** Cliente não respondeu dentro do prazo. */
+    public Orcamento expirar() {
+        if (status != OrcamentoStatus.ENVIADO && status != OrcamentoStatus.AGUARDANDO) {
+            throw new IllegalStateException("Orçamento deve estar ENVIADO ou AGUARDANDO para expirar");
+        }
+        return new Orcamento(id, ordemServicoId, clienteId, itens, OrcamentoStatus.EXPIRADO, observacoes, criadoEm, LocalDateTime.now());
+    }
+
+    public boolean aguardandoResposta() {
+        return status == OrcamentoStatus.ENVIADO || status == OrcamentoStatus.AGUARDANDO;
+    }
+
     public Orcamento atualizar(List<ItemOrcamento> novosItens, String novasObservacoes) {
         if (status != OrcamentoStatus.AGUARDANDO && status != OrcamentoStatus.PENDENTE) {
             throw new IllegalStateException("Orçamento só pode ser atualizado se estiver PENDENTE ou AGUARDANDO");

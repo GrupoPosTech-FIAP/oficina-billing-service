@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -71,6 +72,7 @@ public class OrcamentoController {
             @ApiResponse(responseCode = "404", description = "Orçamento não encontrado"),
             @ApiResponse(responseCode = "409", description = "Orçamento não está em estado PENDENTE")
     })
+    @Transactional // o evento da Saga vai para a outbox na mesma transação
     public ResponseEntity<OrcamentoResponse> enviarOrcamento(@PathVariable String id) {
         Orcamento orcamento = enviarOrcamentoUseCase.executar(id);
         return ResponseEntity.ok(OrcamentoResponse.fromDomain(orcamento));
@@ -85,6 +87,7 @@ public class OrcamentoController {
 
     @PatchMapping("/{id}/aprovar")
     @Operation(summary = "Aprovar orçamento", description = "Transição: ENVIADO|AGUARDANDO → APROVADO")
+    @Transactional // o evento da Saga vai para a outbox na mesma transação
     public ResponseEntity<OrcamentoResponse> aprovarOrcamento(@PathVariable String id) {
         Orcamento orcamento = aprovarOrcamentoUseCase.executar(id);
         return ResponseEntity.ok(OrcamentoResponse.fromDomain(orcamento));
@@ -92,6 +95,7 @@ public class OrcamentoController {
 
     @PatchMapping("/{id}/negar")
     @Operation(summary = "Negar orçamento", description = "Transição: ENVIADO|AGUARDANDO → NEGADO")
+    @Transactional // o evento da Saga vai para a outbox na mesma transação
     public ResponseEntity<OrcamentoResponse> negarOrcamento(@PathVariable String id) {
         Orcamento orcamento = negarOrcamentoUseCase.executar(id);
         return ResponseEntity.ok(OrcamentoResponse.fromDomain(orcamento));

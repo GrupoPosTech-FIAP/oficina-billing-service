@@ -1,5 +1,7 @@
 package com.mecanica.oficina_billing_service.application.cobranca.usecase;
 
+import com.mecanica.oficina_billing_service.application.evento.gateway.PublicadorEventosGateway;
+
 import com.mecanica.oficina_billing_service.application.cobranca.gateway.CobrancaGateway;
 import com.mecanica.oficina_billing_service.application.cobranca.gateway.MercadoPagoGateway;
 import com.mecanica.oficina_billing_service.application.cobranca.input.ProcessarWebhookInput;
@@ -27,11 +29,14 @@ class ProcessarWebhookMercadoPagoUseCaseTest {
     @Mock
     private MercadoPagoGateway mercadoPagoGateway;
 
+    @Mock
+    private PublicadorEventosGateway publicador;
+
     private ProcessarWebhookMercadoPagoUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new ProcessarWebhookMercadoPagoUseCase(cobrancaGateway, mercadoPagoGateway);
+        useCase = new ProcessarWebhookMercadoPagoUseCase(cobrancaGateway, mercadoPagoGateway, publicador);
     }
 
     @Test
@@ -46,10 +51,16 @@ class ProcessarWebhookMercadoPagoUseCaseTest {
                 .thenReturn(Optional.of(new MercadoPagoGateway.DetalhePagamento(987654321L, "approved", "accredited", referencia)));
 
         when(cobrancaGateway.buscarPorReferencia(referencia)).thenReturn(Optional.of(cobranca));
+        when(cobrancaGateway.atualizar(any())).thenAnswer(inv -> inv.getArgument(0));
 
         useCase.executar(input);
 
-        verify(cobrancaGateway).atualizar(argThat(c -> c.getStatus() == CobrancaStatus.PAGO));
+        verify(cobrancaGateway).atualizar(argThat(c -> c.getStatus() == CobrancaStatus.PAGO && c.getPagamentoId() == 987654321L));
+        verify(publicador).publicar("PagamentoConfirmado", "os-999", java.util.Map.of(
+                "ordemServicoId", "os-999",
+                "cobrancaId", cobranca.getId().toString(),
+                "mercadoPagoPaymentId", 987654321L,
+                "valor", new BigDecimal("150.00")));
     }
 
     @Test
@@ -69,6 +80,7 @@ class ProcessarWebhookMercadoPagoUseCaseTest {
         useCase.executar(input);
 
         verify(cobrancaGateway, never()).atualizar(any());
+        verifyNoInteractions(publicador);
     }
 
     @Test
@@ -83,10 +95,16 @@ class ProcessarWebhookMercadoPagoUseCaseTest {
                 .thenReturn(Optional.of(new MercadoPagoGateway.DetalhePagamento(987654321L, "rejected", "cc_rejected_insufficient_amount", referencia)));
 
         when(cobrancaGateway.buscarPorReferencia(referencia)).thenReturn(Optional.of(cobranca));
+        when(cobrancaGateway.atualizar(any())).thenAnswer(inv -> inv.getArgument(0));
 
         useCase.executar(input);
 
         verify(cobrancaGateway).atualizar(argThat(c -> c.getStatus() == CobrancaStatus.RECUSADO));
+        verify(publicador).publicar("PagamentoRecusado", "os-999", java.util.Map.of(
+                "ordemServicoId", "os-999",
+                "cobrancaId", cobranca.getId().toString(),
+                "mercadoPagoPaymentId", 987654321L,
+                "motivo", "cc_rejected_insufficient_amount"));
     }
 
     @Test

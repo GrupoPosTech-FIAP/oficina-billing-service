@@ -1,5 +1,7 @@
 package com.mecanica.oficina_billing_service.application.orcamento.usecase;
 
+import com.mecanica.oficina_billing_service.application.evento.gateway.PublicadorEventosGateway;
+
 import com.mecanica.oficina_billing_service.application.orcamento.gateway.NotificadorClienteGateway;
 import com.mecanica.oficina_billing_service.application.orcamento.gateway.OrcamentoGateway;
 import com.mecanica.oficina_billing_service.application.orcamento.output.NotificacaoCliente;
@@ -30,11 +32,14 @@ class EnviarOrcamentoUseCaseTest {
     @Mock
     private NotificadorClienteGateway notificadorClienteGateway;
 
+    @Mock
+    private PublicadorEventosGateway publicador;
+
     private EnviarOrcamentoUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new EnviarOrcamentoUseCase(orcamentoGateway, notificadorClienteGateway);
+        useCase = new EnviarOrcamentoUseCase(orcamentoGateway, notificadorClienteGateway, publicador);
     }
 
     @Test
