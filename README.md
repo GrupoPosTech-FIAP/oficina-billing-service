@@ -95,6 +95,7 @@ graph TD
 Para instruções operacionais e detalhes do ciclo de vida na nuvem, consulte a pasta [`docs/`](docs/):
 
 * 🚀 **[Guia de Deploy e Destruição na AWS (EKS + RDS + CD)](docs/deploy-aws.md):** Manual completo com o passo a passo de subida das esteiras de CI/CD, configuração de credenciais no Learner Lab, testes de ponta a ponta na nuvem e o **roteiro obrigatório de destruição da infraestrutura** para evitar consumo indevido de créditos.
+* 📨 **[Mensageria (SNS + SQS)](docs/mensageria.md):** Outbox, consumidor idempotente, DLQ e LocalStack para a Saga coreografada.
 
 ---
 
