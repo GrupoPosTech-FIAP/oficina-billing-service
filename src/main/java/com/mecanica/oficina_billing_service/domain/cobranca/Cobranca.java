@@ -73,11 +73,29 @@ public class Cobranca {
         if (this.status == CobrancaStatus.PAGO) {
             return this; // idempotente
         }
-        if (this.status == CobrancaStatus.CANCELADO || this.status == CobrancaStatus.ESTORNADO) {
+        if (!aceitaPagamento()) {
             throw new IllegalStateException("Não é possível pagar uma cobrança com status " + this.status);
         }
         return new Cobranca(id, pedidoId, valor, descricao, referencia, preferenceId, initPoint,
                 CobrancaStatus.PAGO, createdAt, OffsetDateTime.now(), pagamentoId);
+    }
+
+    /**
+     * Só a cobrança {@code PENDENTE} aceita pagamento. Recusada ou cancelada (expirada), a Saga já
+     * cancelou a OS e devolveu o estoque, então um pagamento que chegue depois precisa ser devolvido.
+     */
+    public boolean aceitaPagamento() {
+        return this.status == CobrancaStatus.PENDENTE;
+    }
+
+    /** Registra o reembolso de um pagamento aprovado depois que a cobrança foi recusada ou cancelada. */
+    public Cobranca estornarPagamentoTardio(Long pagamentoId) {
+        if (this.status != CobrancaStatus.CANCELADO && this.status != CobrancaStatus.RECUSADO) {
+            throw new IllegalStateException("Estorno de pagamento tardio exige cobrança recusada ou cancelada, não " + this.status);
+        }
+        return new Cobranca(id, pedidoId, valor, descricao, referencia, preferenceId, initPoint,
+                CobrancaStatus.ESTORNADO, createdAt, OffsetDateTime.now(),
+                Objects.requireNonNull(pagamentoId, "ID do pagamento é obrigatório"));
     }
 
     public Cobranca marcarComoRecusado() {

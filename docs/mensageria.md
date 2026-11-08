@@ -25,6 +25,8 @@ consumir) está em
 | `EstoqueBaixado` | `CobrarOrdemServicoUseCase` | Cria a preferência no Checkout Pro → `CobrancaCriada` (com `checkoutUrl`) |
 | Webhook `approved` | `ProcessarWebhookMercadoPagoUseCase` | Guarda o `paymentId` → `PagamentoConfirmado` |
 | Webhook `rejected`/`cancelled` | idem | `PagamentoRecusado` (o inventory estorna os insumos) |
+| Webhook `approved` com a cobrança já `CANCELADO` (expirada) ou `RECUSADO` | idem | A OS já foi cancelada: reembolsa no Mercado Pago, cobrança → `ESTORNADO` com o `paymentId` → `PagamentoEstornado` (`motivo` `PAGAMENTO_APOS_EXPIRACAO`/`PAGAMENTO_APOS_RECUSA`) |
+| Webhook `approved` de um segundo pagamento da cobrança já paga | idem | Reembolsa só esse pagamento; a cobrança fica como está → `PagamentoEstornado` (`motivo` `PAGAMENTO_DUPLICADO`) |
 | `ExecucaoFalhou` | `EstornarPagamentoOrdemServicoUseCase` | Reembolso no Mercado Pago (`X-Idempotency-Key` fixa por pagamento) → `PagamentoEstornado` |
 | Agendador (1 min) | `ExpirarOrcamentosUseCase` | Orçamento sem resposta além de `ORCAMENTO_EXPIRACAO` → `EXPIRADO` + `OrcamentoExpirado` |
 | Agendador (1 min) | `ExpirarCobrancasUseCase` | Cobrança `PENDENTE` além de `COBRANCA_EXPIRACAO` → `CANCELADO` + `PagamentoExpirado` |

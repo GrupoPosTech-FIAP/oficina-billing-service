@@ -18,6 +18,8 @@ import java.util.Map;
  *
  * <p>Na Saga, a confirmação publica {@code PagamentoConfirmado} e a recusa publica
  * {@code PagamentoRecusado} — apenas na primeira notificação que muda o status da cobrança.
+ * Pagamento aprovado para cobrança que já não aceita pagamento (expirada, recusada ou já paga por
+ * outro pagamento) é reembolsado e publica {@code PagamentoEstornado}.
  */
 public class ProcessarWebhookMercadoPagoUseCase {
 
@@ -70,9 +72,7 @@ public class ProcessarWebhookMercadoPagoUseCase {
 
             switch (status) {
                 case "approved" -> {
-                    if (cobranca.getStatus() == CobrancaStatus.PAGO) {
-                        log.info("Cobrança {} já se encontra como PAGO. Ignorando evento repetido.", cobranca.getId());
-                    } else {
+                    if (cobranca.aceitaPagamento()) {
                         log.info("Atualizando cobrança {} para PAGO.", cobranca.getId());
                         Cobranca paga = cobrancaGateway.atualizar(cobranca.marcarComoPago(paymentId));
                         publicador.publicar(EventosSaga.PAGAMENTO_CONFIRMADO, paga.getPedidoId(), Map.of(
@@ -80,6 +80,13 @@ public class ProcessarWebhookMercadoPagoUseCase {
                                 "cobrancaId", paga.getId().toString(),
                                 "mercadoPagoPaymentId", paymentId,
                                 "valor", paga.getValor()));
+                    } else if (paymentId.equals(cobranca.getPagamentoId())
+                            // paga antes de a cobrança guardar o id do pagamento: não dá para saber se é outro
+                            || (cobranca.getStatus() == CobrancaStatus.PAGO && cobranca.getPagamentoId() == null)) {
+                        log.info("Pagamento {} já registrado na cobrança {} ({}). Ignorando evento repetido.",
+                                paymentId, cobranca.getId(), cobranca.getStatus());
+                    } else {
+                        devolverPagamentoNaoAceito(cobranca, paymentId);
                     }
                 }
                 case "rejected", "cancelled" -> {
@@ -99,11 +106,13 @@ public class ProcessarWebhookMercadoPagoUseCase {
                 case "refunded", "charged_back" -> {
                     if (cobranca.getStatus() == CobrancaStatus.ESTORNADO) {
                         log.info("Cobrança {} já se encontra como ESTORNADA.", cobranca.getId());
-                    } else if (cobranca.getStatus() == CobrancaStatus.PAGO) {
+                    } else if (cobranca.getStatus() == CobrancaStatus.PAGO
+                            && (cobranca.getPagamentoId() == null || cobranca.getPagamentoId().equals(paymentId))) {
                         log.info("Estornando cobrança {}", cobranca.getId());
                         cobrancaGateway.atualizar(cobranca.estornar());
                     } else {
-                        log.warn("Tentativa de estorno em cobrança não paga: status atual {}", cobranca.getStatus());
+                        log.info("Estorno do pagamento {} não altera a cobrança {} ({})",
+                                paymentId, cobranca.getId(), cobranca.getStatus());
                     }
                 }
                 case "in_process", "pending" -> {
@@ -119,5 +128,37 @@ public class ProcessarWebhookMercadoPagoUseCase {
             log.error("Erro ao processar webhook do Mercado Pago: {}", e.getMessage(), e);
             throw new RuntimeException("Falha no processamento de webhook do Mercado Pago", e);
         }
+    }
+
+    /**
+     * Pagamento aprovado que a cobrança não aceita mais: chegou depois de a cobrança expirar ou ser
+     * recusada (a OS já foi cancelada e o estoque devolvido) ou é um segundo pagamento da mesma
+     * cobrança. É reembolsado no Mercado Pago e publica {@code PagamentoEstornado}, que entra no
+     * histórico da OS.
+     *
+     * <p>O reembolso vem antes da gravação. Se a gravação falhar, o Mercado Pago reenvia o webhook e
+     * o reembolso é repetido com a mesma chave de idempotência, sem devolver duas vezes.
+     */
+    private void devolverPagamentoNaoAceito(Cobranca cobranca, Long paymentId) {
+        String motivo = switch (cobranca.getStatus()) {
+            case CANCELADO -> "PAGAMENTO_APOS_EXPIRACAO";
+            case RECUSADO -> "PAGAMENTO_APOS_RECUSA";
+            default -> "PAGAMENTO_DUPLICADO";
+        };
+        log.warn("Pagamento {} aprovado para a cobrança {} em {}: reembolsando ({})",
+                paymentId, cobranca.getId(), cobranca.getStatus(), motivo);
+
+        mercadoPagoGateway.estornarPagamento(paymentId);
+        if (!motivo.equals("PAGAMENTO_DUPLICADO")) {
+            // pagamento duplicado não muda a cobrança: ela continua com o pagamento que valeu
+            cobrancaGateway.atualizar(cobranca.estornarPagamentoTardio(paymentId));
+        }
+
+        publicador.publicar(EventosSaga.PAGAMENTO_ESTORNADO, cobranca.getPedidoId(), Map.of(
+                "ordemServicoId", cobranca.getPedidoId(),
+                "cobrancaId", cobranca.getId().toString(),
+                "mercadoPagoPaymentId", paymentId,
+                "valor", cobranca.getValor(),
+                "motivo", motivo));
     }
 }

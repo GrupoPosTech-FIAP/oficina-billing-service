@@ -5,13 +5,17 @@ import com.mecanica.oficina_billing_service.adapters.persistence.OutboxEventoSpr
 import com.mecanica.oficina_billing_service.application.cobranca.gateway.CobrancaGateway;
 import com.mecanica.oficina_billing_service.application.cobranca.gateway.MercadoPagoGateway;
 import com.mecanica.oficina_billing_service.application.cobranca.input.ProcessarWebhookInput;
+import com.mecanica.oficina_billing_service.application.cobranca.usecase.ExpirarCobrancasUseCase;
 import com.mecanica.oficina_billing_service.application.cobranca.usecase.ProcessarWebhookMercadoPagoUseCase;
+import com.mecanica.oficina_billing_service.application.evento.gateway.PublicadorEventosGateway;
 import com.mecanica.oficina_billing_service.application.orcamento.gateway.OrcamentoGateway;
 import com.mecanica.oficina_billing_service.application.orcamento.usecase.AprovarOrcamentoUseCase;
 import com.mecanica.oficina_billing_service.domain.cobranca.CobrancaStatus;
 import com.mecanica.oficina_billing_service.domain.orcamento.Orcamento;
 import com.mecanica.oficina_billing_service.domain.orcamento.OrcamentoStatus;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -26,6 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,6 +57,8 @@ class SagaBillingIntegracaoTest {
     private ProcessarWebhookMercadoPagoUseCase processarWebhook;
     @Autowired
     private TransactionTemplate transacao;
+    @Autowired
+    private PublicadorEventosGateway publicador;
 
     @MockitoBean
     private MercadoPagoGateway mercadoPago;
@@ -106,6 +113,38 @@ class SagaBillingIntegracaoTest {
         assertThat(cobrancas.buscarPorPedidoId(os).orElseThrow().getStatus()).isEqualTo(CobrancaStatus.ESTORNADO);
         assertThat(eventosPublicados(os)).containsExactly(
                 "OrcamentoGerado", "OrcamentoAprovado", "CobrancaCriada", "PagamentoConfirmado", "PagamentoEstornado");
+    }
+
+    @Test
+    void pagamentoAprovadoDepoisDaExpiracaoEReembolsado() {
+        String os = UUID.randomUUID().toString();
+        receber("DiagnosticoConcluido", os, """
+                {"ordemServicoId":"%s","clienteId":"cli-1",
+                 "servicos":[{"servicoId":"srv-1","quantidade":1,"descricao":"Revisão","precoUnitario":100}],"insumos":[]}
+                """.formatted(os));
+        Orcamento orcamento = orcamentos.buscarPorOrdemServicoId(os).orElseThrow();
+        transacao.executeWithoutResult(s -> aprovarOrcamento.executar(orcamento.getId()));
+        when(mercadoPago.criarPreferencia(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new MercadoPagoGateway.PreferenciaPagamento("pref-" + os, "https://mp/checkout/" + os));
+        receber("EstoqueBaixado", os, "{\"ordemServicoId\":\"" + os + "\",\"itens\":[]}");
+
+        // prazo zero: o agendador cancela a cobrança recém-criada como se o prazo tivesse passado
+        var expirar = new ExpirarCobrancasUseCase(cobrancas, publicador, Duration.ZERO, Clock.systemUTC());
+        transacao.executeWithoutResult(s -> expirar.executar());
+        assertThat(cobrancas.buscarPorPedidoId(os).orElseThrow().getStatus()).isEqualTo(CobrancaStatus.CANCELADO);
+
+        var cobranca = cobrancas.buscarPorPedidoId(os).orElseThrow();
+        when(mercadoPago.consultarPagamento(777L)).thenReturn(Optional.of(new MercadoPagoGateway.DetalhePagamento(
+                777L, "approved", "accredited", cobranca.getReferencia())));
+        transacao.executeWithoutResult(s -> processarWebhook.executar(new ProcessarWebhookInput("payment.updated", "payment", "777")));
+        transacao.executeWithoutResult(s -> processarWebhook.executar(new ProcessarWebhookInput("payment.updated", "payment", "777")));
+
+        verify(mercadoPago, times(1)).estornarPagamento(777L);
+        var estornada = cobrancas.buscarPorPedidoId(os).orElseThrow();
+        assertThat(estornada.getStatus()).isEqualTo(CobrancaStatus.ESTORNADO);
+        assertThat(estornada.getPagamentoId()).isEqualTo(777L);
+        assertThat(eventosPublicados(os)).containsExactly(
+                "OrcamentoGerado", "OrcamentoAprovado", "CobrancaCriada", "PagamentoExpirado", "PagamentoEstornado");
     }
 
     @Test

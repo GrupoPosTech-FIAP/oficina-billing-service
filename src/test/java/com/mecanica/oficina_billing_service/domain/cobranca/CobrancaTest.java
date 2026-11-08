@@ -67,6 +67,33 @@ class CobrancaTest {
     }
 
     @Test
+    @DisplayName("Só a cobrança PENDENTE aceita pagamento")
+    void soPendenteAceitaPagamento() {
+        var pendente = Cobranca.criar("os-123", new BigDecimal("100.00"), "Troca Óleo", "ref-1", "pref-1", "http://init");
+
+        assertTrue(pendente.aceitaPagamento());
+        assertFalse(pendente.marcarComoRecusado().aceitaPagamento());
+        assertFalse(pendente.cancelar().aceitaPagamento());
+        assertFalse(pendente.marcarComoPago(1L).aceitaPagamento());
+        assertThrows(IllegalStateException.class, () -> pendente.marcarComoRecusado().marcarComoPago(2L));
+    }
+
+    @Test
+    @DisplayName("Pagamento tardio em cobrança cancelada ou recusada vira ESTORNADO com o id do pagamento")
+    void deveEstornarPagamentoTardio() {
+        var pendente = Cobranca.criar("os-123", new BigDecimal("100.00"), "Troca Óleo", "ref-1", "pref-1", "http://init");
+
+        var daCancelada = pendente.cancelar().estornarPagamentoTardio(77L);
+        var daRecusada = pendente.marcarComoRecusado().estornarPagamentoTardio(78L);
+
+        assertEquals(CobrancaStatus.ESTORNADO, daCancelada.getStatus());
+        assertEquals(77L, daCancelada.getPagamentoId());
+        assertEquals(CobrancaStatus.ESTORNADO, daRecusada.getStatus());
+        assertThrows(IllegalStateException.class, () -> pendente.estornarPagamentoTardio(79L));
+        assertThrows(IllegalStateException.class, () -> pendente.marcarComoPago(1L).estornarPagamentoTardio(79L));
+    }
+
+    @Test
     @DisplayName("Não deve estornar se estiver PENDENTE")
     void naoDeveEstornarCobrancaPendente() {
         var cobranca = Cobranca.criar("os-123", new BigDecimal("100.00"), "Troca Óleo", "ref-1", "pref-1", "http://init");
