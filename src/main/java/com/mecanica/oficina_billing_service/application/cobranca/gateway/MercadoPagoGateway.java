@@ -60,6 +60,12 @@ public interface MercadoPagoGateway {
     Optional<DetalhePagamento> consultarPagamento(Long paymentId);
 
     /**
+     * Estorna integralmente um pagamento aprovado (compensação da Saga).
+     * Repetir a chamada para o mesmo pagamento não gera um segundo reembolso.
+     */
+    void estornarPagamento(Long paymentId);
+
+    /**
      * Retorna a chave pública para inicialização de componentes no Frontend.
      */
     String getPublicKey();

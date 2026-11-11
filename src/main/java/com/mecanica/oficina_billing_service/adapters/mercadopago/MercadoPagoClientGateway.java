@@ -6,6 +6,7 @@ import com.mecanica.oficina_billing_service.application.cobranca.gateway.Mercado
 import com.mercadopago.MercadoPagoConfig;
 import com.mercadopago.client.common.IdentificationRequest;
 import com.mercadopago.client.payment.PaymentClient;
+import com.mercadopago.client.payment.PaymentRefundClient;
 import com.mercadopago.client.preference.*;
 import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.exceptions.MPApiException;
@@ -163,6 +164,25 @@ public class MercadoPagoClientGateway implements MercadoPagoGateway {
         } catch (Exception e) {
             log.error("Erro ao consultar pagamento {} no Mercado Pago: {}", paymentId, e.getMessage());
             return Optional.empty();
+        }
+    }
+
+    @Override
+    public void estornarPagamento(Long paymentId) {
+        try {
+            // Chave fixa por pagamento: reenvios da mesma compensação não geram novo reembolso
+            var requestOptions = MPRequestOptions.builder()
+                    .customHeaders(Map.of("X-Idempotency-Key", "estorno-" + paymentId))
+                    .build();
+            log.info("Solicitando estorno do pagamento {} no Mercado Pago", paymentId);
+            new PaymentRefundClient().refund(paymentId, requestOptions);
+        } catch (MPApiException apiException) {
+            log.error("Erro na API Mercado Pago ao estornar {} (HTTP {}): {}", paymentId,
+                    apiException.getStatusCode(), apiException.getApiResponse().getContent());
+            throw new MercadoPagoIntegrationException("Erro ao estornar pagamento no Mercado Pago: "
+                    + apiException.getApiResponse().getContent(), apiException);
+        } catch (MPException mpException) {
+            throw new MercadoPagoIntegrationException("Falha de conexão com Mercado Pago: " + mpException.getMessage(), mpException);
         }
     }
 

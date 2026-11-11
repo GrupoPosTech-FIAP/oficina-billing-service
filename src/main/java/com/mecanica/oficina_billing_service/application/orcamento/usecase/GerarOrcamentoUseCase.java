@@ -20,7 +20,7 @@ public class GerarOrcamentoUseCase {
         var existenteOpt = orcamentoGateway.buscarPorOrdemServicoId(input.ordemServicoId());
         if (existenteOpt.isPresent()) {
             var existente = existenteOpt.get();
-            if (existente.getStatus() != OrcamentoStatus.NEGADO) {
+            if (existente.getStatus() != OrcamentoStatus.NEGADO && existente.getStatus() != OrcamentoStatus.EXPIRADO) {
                 throw new IllegalStateException("Ordem de serviço já possui orçamento em andamento (ID: " + existente.getId() + "). Utilize atualização caso necessário.");
             }
         }

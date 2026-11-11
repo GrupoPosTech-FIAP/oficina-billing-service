@@ -5,5 +5,6 @@ public enum OrcamentoStatus {
     ENVIADO,
     AGUARDANDO,
     APROVADO,
-    NEGADO
+    NEGADO,
+    EXPIRADO
 }

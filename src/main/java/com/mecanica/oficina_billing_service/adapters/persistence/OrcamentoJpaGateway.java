@@ -3,9 +3,11 @@ package com.mecanica.oficina_billing_service.adapters.persistence;
 import com.mecanica.oficina_billing_service.application.orcamento.gateway.OrcamentoGateway;
 import com.mecanica.oficina_billing_service.domain.orcamento.ItemOrcamento;
 import com.mecanica.oficina_billing_service.domain.orcamento.Orcamento;
+import com.mecanica.oficina_billing_service.domain.orcamento.OrcamentoStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -53,6 +55,14 @@ public class OrcamentoJpaGateway implements OrcamentoGateway {
         return repository.findAll().stream()
                 .map(this::toDomain)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Orcamento> listarPorStatus(Collection<OrcamentoStatus> status) {
+        return repository.findByStatusIn(status).stream()
+                .map(this::toDomain)
+                .toList();
     }
 
     private OrcamentoEntity toEntity(Orcamento domain) {

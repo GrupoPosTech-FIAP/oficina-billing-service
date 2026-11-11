@@ -68,6 +68,14 @@ public class CobrancaJpaGateway implements CobrancaGateway {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<Cobranca> listarPorStatus(CobrancaStatus status) {
+        return repository.findByStatus(status.name()).stream()
+                .map(this::toDomain)
+                .toList();
+    }
+
     private CobrancaEntity toEntity(Cobranca domain) {
         CobrancaEntity entity = new CobrancaEntity();
         entity.setId(domain.getId());
@@ -80,6 +88,7 @@ public class CobrancaJpaGateway implements CobrancaGateway {
         entity.setStatus(domain.getStatus() != null ? domain.getStatus().name() : CobrancaStatus.PENDENTE.name());
         entity.setCreatedAt(domain.getCreatedAt());
         entity.setUpdatedAt(domain.getUpdatedAt());
+        entity.setPagamentoId(domain.getPagamentoId());
         return entity;
     }
 
@@ -101,7 +110,8 @@ public class CobrancaJpaGateway implements CobrancaGateway {
                 entity.getInitPoint(),
                 status,
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                entity.getPagamentoId()
         );
     }
 }
