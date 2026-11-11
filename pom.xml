@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.1.1</version>
+		<version>4.1.2</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.mecanica</groupId>
@@ -42,6 +42,12 @@
 				<version>${aws-sdk.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
+			</dependency>
+			<!-- Transitiva do velocity-tools (sdk-java); 1.9.x tem CVE (GHSA-wxr5-93ph-8wr9) -->
+			<dependency>
+				<groupId>commons-beanutils</groupId>
+				<artifactId>commons-beanutils</artifactId>
+				<version>1.11.0</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
@@ -110,7 +116,7 @@
 		<dependency>
 			<groupId>com.mercadopago</groupId>
 			<artifactId>sdk-java</artifactId>
-			<version>2.1.21</version>
+			<version>3.7.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
