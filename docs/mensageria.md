@@ -13,7 +13,7 @@ consumir) está em
 | Publica em | `oficina-billing-events` |
 | Consome | `oficina-billing-queue` (DLQ: `oficina-billing-dlq`) |
 | Eventos que publica (ADR 005) | OrcamentoGerado, OrcamentoAprovado, OrcamentoNegado, OrcamentoExpirado, CobrancaCriada, PagamentoConfirmado, PagamentoRecusado, PagamentoExpirado, PagamentoEstornado |
-| Eventos que recebe | DiagnosticoConcluido (os), EstoqueBaixado (inventory), ExecucaoFalhou (os; execution quando o serviço existir) |
+| Eventos que recebe | DiagnosticoConcluido (os), EstoqueBaixado (inventory), ExecucaoFalhou (execution) |
 
 ### Passos da Saga
 
