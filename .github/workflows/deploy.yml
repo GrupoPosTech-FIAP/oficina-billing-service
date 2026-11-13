@@ -76,6 +76,8 @@ jobs:
           type: Opaque
           data:
             JWT_SECRET: $(printf '%s' "${{ secrets.JWT_SECRET }}" | base64 -w0)
+            OTEL_EXPORTER_OTLP_HEADERS: $(printf 'api-key=%s' "${{ secrets.NEW_RELIC_LICENSE_KEY }}" | base64 -w0)
+            OTEL_SDK_DISABLED: $(printf '%s' "${{ secrets.NEW_RELIC_LICENSE_KEY != '' && 'false' || 'true' }}" | base64 -w0)
             SPRING_DATASOURCE_PASSWORD: $(printf '%s' "${{ secrets.RDS_PASSWORD }}" | base64 -w0)
             MP_ACCESS_TOKEN: $(printf '%s' "${{ secrets.MP_ACCESS_TOKEN }}" | base64 -w0)
             MP_WEBHOOK_SECRET: $(printf '%s' "${{ secrets.MP_WEBHOOK_SECRET }}" | base64 -w0)

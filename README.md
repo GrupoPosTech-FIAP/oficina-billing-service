@@ -274,6 +274,18 @@ docker compose up -d billing-db
 
 ---
 
+## 📊 Observabilidade
+
+A imagem roda com o agente do **OpenTelemetry** (como na app-api, ADR 002), que exporta traces, métricas e logs por OTLP
+para o **New Relic** como `service.name=oficina-billing-service` (`service.namespace=oficina`). O agente captura HTTP, banco, SNS/SQS
+e o relay do outbox sem dependência no código; os logs da Saga trazem `saga_id` e `event_type` para acompanhar uma OS
+entre os serviços. Consultas NRQL e alertas: [monitoramento e observabilidade](https://github.com/GrupoPosTech-FIAP/oficina-app-api/blob/main/docs/monitoramento-e-observabilidade.md).
+
+- **AWS:** as variáveis `OTEL_*` ficam no `k8s/base/configmap.yaml`; o `deploy.yml` monta a license key a partir do
+  secret `NEW_RELIC_LICENSE_KEY` e desliga o agente (`OTEL_SDK_DISABLED=true`) quando ele não existe.
+- **Local:** no `docker-compose` o agente vem desligado; para ligar, defina `NEW_RELIC_LICENSE_KEY` e
+  `OTEL_SDK_DISABLED=false` no `.env`.
+
 ## ☁️ Deploy e Infraestrutura Kubernetes (K8s & CI/CD Independente)
 
 O `oficina-billing-service` possui ciclo de vida e **Continuous Deployment (CD) 100% desacoplado**, utilizando Kustomize para gerenciar os manifestos declarativos do Kubernetes e GitHub Actions para a automação.
@@ -350,6 +362,7 @@ Para o funcionamento do CD, cadastre em **Settings > Secrets and variables > Act
 | `MP_ACCESS_TOKEN` | Token privado do Mercado Pago | Painel do Desenvolvedor Mercado Pago |
 | `MP_WEBHOOK_SECRET` | Chave HMAC de assinatura de webhook | Configuração de Webhooks Mercado Pago |
 | `MP_PUBLIC_KEY` | Chave pública do Mercado Pago | Painel do Desenvolvedor Mercado Pago |
+| `NEW_RELIC_LICENSE_KEY` | License key de ingestão do New Relic (opcional; sem ela o agente fica desligado) | New Relic > API Keys |
 
 #### 🧪 Validação Local dos Manifestos (sem aplicar no cluster):
 ```bash
